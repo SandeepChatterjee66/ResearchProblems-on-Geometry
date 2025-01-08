@@ -345,7 +345,7 @@
                         const dist12Sq = Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2);
                         const dist23Sq = Math.pow(p2.x - p3.x, 2) + Math.pow(p2.y - p3.y, 2);
 
-                        if (Math.abs(dist13Sq - dist24Sq) < 1e-6 ){ //&& Math.abs(dist12Sq + dist23Sq - dist13Sq) < 1e-6) {
+                        if (Math.abs(dist13Sq - dist24Sq) < 1e-6 ) && Math.abs(dist12Sq + dist23Sq - dist13Sq) < 1e-6) {
                             const area = 0.5 * dist13Sq;
                             if (area > maxArea) {
                                 maxArea = area;
