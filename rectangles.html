@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Point Plotter System</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        #gridContainer {
+            position: relative;
+            width: 100%;
+            height: 600px;
+            overflow: hidden;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            background-color: white;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        
+        .switch label input[type=checkbox]:checked+.lever {
+            background-color: #90caf9;
+        }
+        
+        .switch label input[type=checkbox]:checked+.lever:after {
+            background-color: #2196f3;
+        }
+        
+        .select-wrapper input.select-dropdown:focus {
+            border-bottom: 1px solid #2196f3;
+        }
+        
+        .dropdown-content li>a, .dropdown-content li>span {
+            color: #2196f3;
+        }
+
+        .action-btn {
+            margin-top: 15px;
+        }
+
+        #generateButton {
+            display: none;
+        }
+
+        #pointSetDisplay {
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            line-height: 1.5;
+            padding: 15px;
+            overflow-x: auto;
+            white-space: nowrap;
+            color: #333;
+        }
+
+        .point-set-title {
+            font-weight: 500;
+            margin-bottom: 10px;
+            color: #2196f3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Controls Card -->
+        <div class="card">
+            <div class="row">
+                <div class="input-field col s6">
+                    <input type="number" id="pointCount" min="1" max="100" class="validate">
+                    <label for="pointCount">Number of Points (N)</label>
+                </div>
+                <div class="input-field col s6">
+                    <select id="placementMode" onchange="handleModeChange()">
+                        <option value="" disabled selected>Choose your placement mode</option>
+                        <option value="manual">Manual Selection</option>
+                        <option value="random">Random Points</option>
+                    </select>
+                    <label>Point Placement Mode</label>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col s12 center-align">
+                    <button id="generateButton" class="waves-effect waves-light btn action-btn" onclick="handlePointPlacement()">
+                        <i class="material-icons left">add_circle</i>Generate Random Points
+                    </button>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col s12">
+                    <div class="switch">
+                        <label>
+                            Hide Coordinates
+                            <input type="checkbox" id="coordToggle" checked>
+                            <span class="lever"></span>
+                            Show Coordinates
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Grid Card -->
+        <div class="card">
+            <div id="gridContainer">
+                <canvas id="gridCanvas"></canvas>
+                <canvas id="pointCanvas"></canvas>
+            </div>
+        </div>
+
+        <!-- Point Set Display Card -->
+        <div class="card">
+            <div class="point-set-title">Point Set</div>
+            <div id="pointSetDisplay">
+                No points plotted yet
+            </div>
+        </div>
+
+        <!-- Rectangle Set Display Card -->
+        <div class="card">
+            <div class="point-set-title">Rectangle Set</div>
+            <div id="rectangleSetDisplay">
+                No points plotted yet
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script>
+        // Global variables
+        let points = [];
+        let isManualMode = false;
+        const gridCanvas = document.getElementById('gridCanvas');
+        const pointCanvas = document.getElementById('pointCanvas');
+        const gridCtx = gridCanvas.getContext('2d');
+        const pointCtx = pointCanvas.getContext('2d');
+        const coordToggle = document.getElementById('coordToggle');
+        const generateButton = document.getElementById('generateButton');
+        const pointSetDisplay = document.getElementById('pointSetDisplay');
+        const rectangleSetDisplay = document.getElementById('rectangleSetDisplay');
+    
+        // Initialize Materialize components
+        document.addEventListener('DOMContentLoaded', function () {
+            const selects = document.querySelectorAll('select');
+            M.FormSelect.init(selects);
+        });
+    
+        // Draw the grid
+        function drawGrid() {
+            const width = gridCanvas.width;
+            const height = gridCanvas.height;
+            const gridSize = 30;
+    
+            // Calculate center points for axes
+            const centerX = Math.floor(width / 2);
+            const centerY = Math.floor(height / 2);
+    
+            gridCtx.clearRect(0, 0, width, height);
+    
+            // Draw regular grid lines
+            gridCtx.strokeStyle = '#e0e0e0';
+            gridCtx.lineWidth = 1;
+    
+            for (let x = 0; x < width; x += gridSize) {
+                if (x !== centerX) {
+                    gridCtx.beginPath();
+                    gridCtx.moveTo(x, 0);
+                    gridCtx.lineTo(x, height);
+                    gridCtx.stroke();
+                }
+            }
+    
+            for (let y = 0; y < height; y += gridSize) {
+                if (y !== centerY) {
+                    gridCtx.beginPath();
+                    gridCtx.moveTo(0, y);
+                    gridCtx.lineTo(width, y);
+                    gridCtx.stroke();
+                }
+            }
+    
+            // Draw thick lines every 10 grid cells
+            gridCtx.strokeStyle = '#9e9e9e';
+            gridCtx.lineWidth = 2;
+    
+            for (let x = 0; x < width; x += gridSize * 10) {
+                if (x !== centerX) {
+                    gridCtx.beginPath();
+                    gridCtx.moveTo(x, 0);
+                    gridCtx.lineTo(x, height);
+                    gridCtx.stroke();
+                }
+            }
+    
+            for (let y = 0; y < height; y += gridSize * 10) {
+                if (y !== centerY) {
+                    gridCtx.beginPath();
+                    gridCtx.moveTo(0, y);
+                    gridCtx.lineTo(width, y);
+                    gridCtx.stroke();
+                }
+            }
+    
+            // Draw axes
+            gridCtx.strokeStyle = '#2196f3';
+            gridCtx.lineWidth = 3;
+    
+            // X-axis
+            gridCtx.beginPath();
+            gridCtx.moveTo(0, centerY);
+            gridCtx.lineTo(width, centerY);
+            gridCtx.stroke();
+    
+            // Y-axis
+            gridCtx.beginPath();
+            gridCtx.moveTo(centerX, 0);
+            gridCtx.lineTo(centerX, height);
+            gridCtx.stroke();
+    
+            // Add labels
+            gridCtx.font = 'bold 16px Arial';
+            gridCtx.fillStyle = '#2196f3';
+            gridCtx.fillText('X', width - 20, centerY - 10);
+            gridCtx.fillText('Y', centerX + 10, 20);
+            gridCtx.fillText('O', centerX - 20, centerY + 20);
+        }
+    
+        // Draw the points on the grid
+        function drawPoints() {
+            pointCtx.clearRect(0, 0, pointCanvas.width, pointCanvas.height);
+    
+            points.forEach(point => {
+                // Draw point
+                pointCtx.beginPath();
+                pointCtx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+                pointCtx.fillStyle = '#2196f3';
+                pointCtx.fill();
+    
+                // Draw coordinates if enabled
+                if (coordToggle.checked) {
+                    pointCtx.font = '14px Arial';
+                    pointCtx.fillStyle = '#000';
+                    const gridX = Math.round((point.x - pointCanvas.width / 2) / 30);
+                    const gridY = -Math.round((point.y - pointCanvas.height / 2) / 30);
+                    pointCtx.fillText(`(${gridX}, ${gridY})`, point.x + 10, point.y);
+                }
+            });
+        }
+    
+        // Update the point set display
+        function updatePointSetDisplay() {
+            if (points.length === 0) {
+                pointSetDisplay.textContent = "No points plotted yet";
+                return;
+            }
+    
+            const coordinates = points.map(point => {
+                const gridX = Math.round((point.x - pointCanvas.width / 2) / 30);
+                const gridY = -Math.round((point.y - pointCanvas.height / 2) / 30);
+                return `(${gridX}, ${gridY})`;
+            });
+    
+            pointSetDisplay.textContent = `{ ${coordinates.join(', ')} }`;
+        }
+
+        // Update the rectangle set display
+        function updateRectangleSetDisplay() {
+            const coordinates = points.map(point => ({ x: point.x, y: point.y }));
+            const rectangles = findRectangles(coordinates); // Get the list of rectangles
+            console.log(rectangles);
+
+            if (rectangles.length === 0) {
+                rectangleSetDisplay.textContent = "No rectangles found";
+            } else {
+                const rectangleCoordinates = rectangles.map(rectangle => {
+                    return rectangle.map(point => {
+                        const gridX = Math.round((point.x - pointCanvas.width / 2) / 30);
+                        const gridY = -Math.round((point.y - pointCanvas.height / 2) / 30);
+                        return `(${gridX}, ${gridY})`;
+                    }).join(', ');
+                });
+
+                rectangleSetDisplay.innerHTML = `Rectangles: <br> ${rectangleCoordinates.join('<br>')}`;
+            }
+        
+        }
+
+
+        function findRectangles(points) {
+            const slopeMap = new Map();
+
+            // Generate all point pairs and calculate slopes
+            for (let i = 0; i < points.length; i++) {
+                for (let j = i + 1; j < points.length; j++) {
+                    const p1 = points[i];
+                    const p2 = points[j];
+
+                    const slope = (p2.y - p1.y) / (p2.x - p1.x);
+                    const lengthSq = Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2);
+
+                    const key = `${slope},${lengthSq}`;
+                    if (!slopeMap.has(key)) {
+                        slopeMap.set(key, []);
+                    }
+                    slopeMap.get(key).push([p1, p2]);
+                }
+            }
+
+            const rectangles = new Set();
+            let maxArea = 0;
+            let largestRectangle;
+
+            // Check for rectangles
+            for (const [key, pairs] of slopeMap) {
+                if (pairs.length < 2) continue;
+
+                for (let i = 0; i < pairs.length; i++) {
+                    for (let j = i + 1; j < pairs.length; j++) {
+                        const [p1, p2] = pairs[i];
+                        const [p3, p4] = pairs[j];
+
+                        const dist13Sq = Math.pow(p1.x - p3.x, 2) + Math.pow(p1.y - p3.y, 2);
+                        const dist24Sq = Math.pow(p2.x - p4.x, 2) + Math.pow(p2.y - p4.y, 2);
+                        const dist12Sq = Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2);
+                        const dist23Sq = Math.pow(p2.x - p3.x, 2) + Math.pow(p2.y - p3.y, 2);
+
+                        if (Math.abs(dist13Sq - dist24Sq) < 1e-6 ){ //&& Math.abs(dist12Sq + dist23Sq - dist13Sq) < 1e-6) {
+                            const area = 0.5 * dist13Sq;
+                            if (area > maxArea) {
+                                maxArea = area;
+                                largestRectangle = [p1, p2, p3, p4].sort((a, b) => JSON.stringify(a) < JSON.stringify(b) ? -1 : 1);
+                            }
+
+                            const rect = [p1, p2, p3, p4].sort((a, b) => JSON.stringify(a) < JSON.stringify(b) ? -1 : 1);
+                            rectangles.add(JSON.stringify(rect));
+                        }
+                    }
+                }
+            }
+
+            console.log(`Largest Rectangle: ${JSON.stringify(largestRectangle)}`);
+            console.log(`Max Area: ${maxArea}`);
+
+            /// Draw the largest rectangle
+            if (largestRectangle) {
+                pointCtx.strokeStyle = 'red';
+                pointCtx.lineWidth = 3;
+
+                // Sort points by x-coordinate, and then by y-coordinate
+                const sortedPoints = largestRectangle.slice().sort((a, b) => {
+                    if (a.x === b.x) {
+                        return a.y - b.y;
+                    } else {
+                        return a.x - b.x;
+                    }
+                });
+
+                // Draw edges
+                pointCtx.beginPath();
+                pointCtx.moveTo(sortedPoints[0].x, sortedPoints[0].y);
+                pointCtx.lineTo(sortedPoints[1].x, sortedPoints[1].y);
+                pointCtx.lineTo(sortedPoints[3].x, sortedPoints[3].y);
+                pointCtx.lineTo(sortedPoints[2].x, sortedPoints[2].y);
+                pointCtx.closePath();
+                pointCtx.stroke();
+            }
+
+            return Array.from(rectangles).map((rect) => JSON.parse(rect));
+        }
+
+
+    
+        
+
+        
+
+
+
+    
+        // Handle mode change
+        function handleModeChange() {
+            const n = parseInt(document.getElementById('pointCount').value);
+            const mode = document.getElementById('placementMode').value;
+    
+            points = [];
+            drawPoints();
+            updatePointSetDisplay();
+    
+            if (!n || n <= 0) {
+                M.toast({ html: 'Please enter the number of points first' });
+                document.getElementById('placementMode').value = "";
+                M.FormSelect.init(document.getElementById('placementMode'));
+                return;
+            }
+    
+            generateButton.style.display = mode === 'random' ? 'inline-block' : 'none';
+    
+            if (mode === 'manual') {
+                isManualMode = true;
+                M.toast({ html: `Click to place ${n} points on the grid` });
+            }else{
+                M.toast({ html: `Computing rectangles out of ${n} random points` });
+                updateRectangleSetDisplay();
+            }
+
+        }
+    
+        // Handle point placement
+        function handlePointPlacement() {
+            const n = parseInt(document.getElementById('pointCount').value);
+            points = [];
+
+            for (let i = 0; i < n; i++) {
+                const x = Math.round((Math.random() * pointCanvas.width) / 30) * 30;
+                const y = Math.round((Math.random() * pointCanvas.height) / 30) * 30;
+                points.push({ x, y });
+            }
+            drawPoints();
+            updatePointSetDisplay();
+
+            M.toast({ html: `Computing rectangles out of ${n} chosen points` });
+            updateRectangleSetDisplay();
+        }
+    
+        // Resize the canvases
+        function resizeCanvases() {
+            const container = document.getElementById('gridContainer');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+    
+            gridCanvas.width = width;
+            gridCanvas.height = height;
+            pointCanvas.width = width;
+            pointCanvas.height = height;
+    
+            drawGrid();
+            drawPoints();
+        }
+    
+        // Event listeners
+        pointCanvas.addEventListener('click', (e) => {
+            if (isManualMode && points.length < parseInt(document.getElementById('pointCount').value)) {
+                const rect = pointCanvas.getBoundingClientRect();
+                const x = Math.round(((e.clientX - rect.left) / 30)) * 30;
+                const y = Math.round(((e.clientY - rect.top) / 30)) * 30;
+                points.push({ x, y });
+                drawPoints();
+                updatePointSetDisplay();
+
+                if (points.length === parseInt(document.getElementById('pointCount').value)) {
+                    isManualMode = false;
+                    M.toast({ html: 'All points placed!' });
+
+                    M.toast({ html: `Computing rectangles out of random points` });
+                    updateRectangleSetDisplay();
+                }
+            }
+        });
+    
+        coordToggle.addEventListener('change', drawPoints);
+        window.addEventListener('resize', resizeCanvases);
+        resizeCanvases();
+    </script>
+</body>
+</html>    
