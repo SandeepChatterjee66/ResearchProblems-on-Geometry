@@ -1,3 +1,5 @@
 # geometry.github.io
-interesting research problems in geometry which Computers can answer.
-Some of thesee problems are encountered during Sasanka Sir's Comp Geometry class and Sandip Sir's optimization lecture class
+interesting open research problems I am tring to solve
+Some of these problems are collaborated with Dr Sasanka Roy (specializing Convex Geometry) and Dr Sandip Das (Optimization algorithms)
+
+![image (1)](https://github.com/user-attachments/assets/1841f347-be42-4227-b575-1b2ca280259f)
