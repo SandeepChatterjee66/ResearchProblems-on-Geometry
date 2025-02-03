@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upper Hull Visualization</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+            background: #f9f9f9;
+        }
+        .controls {
+            margin-top: 10px;
+        }
+        .stack {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .stack div {
+            padding: 5px;
+            border: 1px solid black;
+            background: lightblue;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="600" height="400"></canvas>
+    <div class="controls">
+        <button onclick="generateRandomPoints()">Generate Random Points</button>
+        <button onclick="clearCanvas()">Clear</button>
+        <button onclick="playStep()">Play</button>
+        <input type="text" id="pointsInput" placeholder="Enter points (x1,y1) (x2,y2) ...">
+        <button onclick="loadPoints()">Load Points</button>
+    </div>
+    <div id="stack" class="stack"></div>
+    
+    <script>
+        let points = [];
+        let upperHull = [];
+        let stepIndex = 0;
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        function generateRandomPoints() {
+            points = Array.from({length: 10}, () => [Math.random() * 500 + 50, Math.random() * 300 + 50]);
+            drawPoints();
+        }
+
+        function clearCanvas() {
+            points = [];
+            upperHull = [];
+            stepIndex = 0;
+            updateStack();
+            drawPoints();
+        }
+
+        function loadPoints() {
+            const input = document.getElementById("pointsInput").value;
+            points = input.match(/\d+,\d+/g).map(p => p.split(",").map(Number));
+            drawPoints();
+        }
+
+        function drawPoints() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            ctx.fillStyle = "red";
+            points.forEach(([x, y]) => ctx.fillRect(x - 2, y - 2, 4, 4));
+            drawUpperHull();
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = "#ddd";
+            for (let x = 50; x < canvas.width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 50; y < canvas.height; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        function drawUpperHull() {
+            ctx.strokeStyle = "blue";
+            ctx.beginPath();
+            if (upperHull.length > 0) {
+                ctx.moveTo(upperHull[0][0], upperHull[0][1]);
+                for (let i = 1; i < upperHull.length; i++) {
+                    ctx.lineTo(upperHull[i][0], upperHull[i][1]);
+                }
+            }
+            ctx.stroke();
+        }
+
+        function crossProduct(o, a, b) {
+            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+        }
+
+        function computeUpperHullStep() {
+            if (stepIndex >= points.length) return;
+
+            if (stepIndex === 0) {
+                points.sort((a, b) => a[0] - b[0]);
+                upperHull = [];
+            }
+
+            upperHull.push(points[stepIndex]);
+            while (upperHull.length >= 3 && crossProduct(upperHull[upperHull.length - 3], upperHull[upperHull.length - 2], upperHull[upperHull.length - 1]) <= 0) {
+                upperHull.splice(upperHull.length - 2, 1);
+            }
+
+            stepIndex++;
+            updateStack();
+            drawPoints();
+        }
+
+        function updateStack() {
+            const stackDiv = document.getElementById("stack");
+            stackDiv.innerHTML = "";
+            upperHull.forEach(([x, y]) => {
+                const block = document.createElement("div");
+                block.textContent = `(${x.toFixed(1)}, ${y.toFixed(1)})`;
+                stackDiv.appendChild(block);
+            });
+        }
+
+        function playStep() {
+            computeUpperHullStep();
+        }
+    </script>
+</body>
+</html>

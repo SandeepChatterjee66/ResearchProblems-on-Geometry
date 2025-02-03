@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upper Hull Visualization</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        canvas {
+            border: 2px solid #000;
+            background-color: #ffffff;
+            display: block;
+            margin: 20px auto;
+        }
+        .controls {
+            margin-bottom: 15px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .stack-container {
+            margin-top: 20px;
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        .stack-block {
+            padding: 10px;
+            background-color: #ffcc00;
+            border: 1px solid #000;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Upper Hull Visualization</h1>
+    <div class="controls">
+        <button onclick="generateRandomPoints()">Generate Random Points</button>
+        <button onclick="startGrahamScan()">Start Algorithm</button>
+        <button onclick="stepForward()">Play Next Edge</button>
+    </div>
+    <canvas id="canvas" width="600" height="400"></canvas>
+    <div class="stack-container" id="stack"></div>
+
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        let points = [];
+        let stack = [];
+        let edges = [];
+        let stepIndex = 0;
+
+        function drawPoints() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "black";
+            points.forEach(([x, y]) => {
+                ctx.beginPath();
+                ctx.arc(x, y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function generateRandomPoints() {
+            points = [];
+            for (let i = 0; i < 10; i++) {
+                points.push([Math.random() * canvas.width, Math.random() * canvas.height]);
+            }
+            points.sort((a, b) => a[0] - b[0]);
+            stack = [];
+            edges = [];
+            stepIndex = 0;
+            drawPoints();
+        }
+
+        function crossProduct(o, a, b) {
+            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+        }
+
+        function startGrahamScan() {
+            stack = [];
+            edges = [];
+            stepIndex = 0;
+            for (let p of points) {
+                while (stack.length >= 2 && crossProduct(stack[stack.length - 2], stack[stack.length - 1], p) <= 0) {
+                    stack.pop();
+                }
+                stack.push(p);
+                edges.push([...stack]);
+            }
+            drawPoints();
+        }
+
+        function stepForward() {
+            if (stepIndex < edges.length) {
+                stack = edges[stepIndex];
+                updateStackUI();
+                drawHull();
+                stepIndex++;
+            }
+        }
+
+        function drawHull() {
+            drawPoints();
+            ctx.strokeStyle = "red";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let i = 0; i < stack.length; i++) {
+                if (i === 0) ctx.moveTo(stack[i][0], stack[i][1]);
+                else ctx.lineTo(stack[i][0], stack[i][1]);
+            }
+            ctx.stroke();
+        }
+
+        function updateStackUI() {
+            const stackContainer = document.getElementById("stack");
+            stackContainer.innerHTML = "";
+            stack.forEach(([x, y]) => {
+                const block = document.createElement("div");
+                block.className = "stack-block";
+                block.textContent = `(${Math.round(x)}, ${Math.round(y)})`;
+                stackContainer.appendChild(block);
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tangent Finder on Convex Polygon</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        canvas {
+            border: 2px solid #000;
+            background-color: #ffffff;
+            display: block;
+            margin: 20px auto;
+        }
+        .controls {
+            margin-bottom: 15px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .info {
+            margin-top: 10px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Tangent Finder on Convex Polygon</h1>
+    <div class="controls">
+        <button onclick="generatePolygon()">Generate Convex Polygon</button>
+        <button onclick="generateRandomPoint()">Generate Random Point</button>
+        <button onclick="startBinarySearch()">Find Tangents</button>
+    </div>
+    <canvas id="canvas" width="600" height="400"></canvas>
+    <div class="info" id="infoText">Status: Waiting...</div>
+
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const infoText = document.getElementById("infoText");
+        let polygon = [];
+        let point = null;
+        let triangulation = [];
+        let activeTriangle = null;
+        let finalWedges = null;
+        let currentStep = 0;
+        let left = 0, right = 0;
+
+        function drawGrid() {
+            ctx.strokeStyle = "#eee";
+            ctx.lineWidth = 0.5;
+            // Vertical lines
+            for (let x = 0; x <= canvas.width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            // Horizontal lines
+            for (let y = 0; y <= canvas.height; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+            // Axes
+            ctx.strokeStyle = "#aaa";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height/2);
+            ctx.lineTo(canvas.width, canvas.height/2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(canvas.width/2, 0);
+            ctx.lineTo(canvas.width/2, canvas.height);
+            ctx.stroke();
+        }
+
+        function generateConvexPolygon(numPoints) {
+            let points = [];
+            for (let i = 0; i < numPoints; i++) {
+                let angle = (i / numPoints) * Math.PI * 2;
+                let radius = 100 + Math.random() * 80;
+                let x = 300 + radius * Math.cos(angle);
+                let y = 200 + radius * Math.sin(angle);
+                points.push([x, y]);
+            }
+            
+            // Andrew's monotone chain algorithm
+            points.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+            let lower = [];
+            for (let p of points) {
+                while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+                    lower.pop();
+                }
+                lower.push(p);
+            }
+            let upper = [];
+            for (let p of points.reverse()) {
+                while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+                    upper.pop();
+                }
+                upper.push(p);
+            }
+            return lower.slice(0, -1).concat(upper.slice(0, -1));
+        }
+
+        function cross(o, a, b) {
+            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+        }
+
+        function generatePolygon() {
+            polygon = generateConvexPolygon(8 + Math.floor(Math.random() * 4));
+            point = null;
+            triangulation = [];
+            activeTriangle = null;
+            finalWedges = null;
+            infoText.textContent = "Status: Convex polygon generated";
+            drawScene();
+        }
+
+        function generateRandomPoint() {
+            let inside = Math.random() > 0.5;
+            let x = inside ? 300 + Math.random() * 50 - 25 : Math.random() * 600;
+            let y = inside ? 200 + Math.random() * 50 - 25 : Math.random() * 400;
+            point = [x, y];
+            infoText.textContent = `Status: Point generated at (${Math.round(x)}, ${Math.round(y)})`;
+            drawScene();
+        }
+
+        function triangulatePolygon() {
+            triangulation = [];
+            const v0 = polygon[0];
+            for (let i = 1; i < polygon.length - 1; i++) {
+                triangulation.push({
+                    triangle: [v0, polygon[i], polygon[i+1]],
+                    leftWedge: [v0, polygon[i]],
+                    rightWedge: [v0, polygon[i+1]]
+                });
+            }
+        }
+
+        function startBinarySearch() {
+            if (!polygon.length || !point) {
+                infoText.textContent = "Generate polygon and point first!";
+                return;
+            }
+            triangulatePolygon();
+            currentStep = 0;
+            left = 0;
+            right = triangulation.length - 1;
+            finalWedges = null;
+            binarySearchStep();
+        }
+
+        function getWedges(triangleData) {
+            return [
+                {start: triangleData.leftWedge[0], end: triangleData.leftWedge[1]},
+                {start: triangleData.rightWedge[0], end: triangleData.rightWedge[1]}
+            ];
+        }
+
+        function binarySearchStep() {
+            if (left > right) return;
+
+            const mid = Math.floor((left + right) / 2);
+            activeTriangle = triangulation[mid];
+            const wedges = getWedges(activeTriangle);
+
+            drawScene();
+            infoText.textContent = `Step ${currentStep+1}: Checking triangle ${mid+1}`;
+
+            setTimeout(() => {
+                const leftWedge = activeTriangle.leftWedge;
+                const rightWedge = activeTriangle.rightWedge;
+                const leftSide = cross(leftWedge[0], leftWedge[1], point);
+                const rightSide = cross(rightWedge[0], rightWedge[1], point);
+
+                if (leftSide <= 0 && rightSide >= 0) {
+                    if (isPointInTriangle(point, activeTriangle.triangle)) {
+                        finalWedges = wedges;
+                        infoText.textContent = "Point inside polygon! Highlighting wedges";
+                    } else {
+                        computeRealTangents();
+                    }
+                } else {
+                    if (leftSide > 0) {
+                        right = mid - 1;
+                    } else {
+                        left = mid + 1;
+                    }
+                    currentStep++;
+                    binarySearchStep();
+                }
+                drawScene();
+            }, 600);
+        }
+
+        function isPointInTriangle(p, triangle) {
+            const [a, b, c] = triangle;
+            const d1 = cross(a, b, p);
+            const d2 = cross(b, c, p);
+            const d3 = cross(c, a, p);
+            return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+        }
+
+        function computeRealTangents() {
+            let leftTangent = polygon[0];
+            let rightTangent = polygon[0];
+
+            polygon.forEach(v => {
+                const c1 = cross(point, leftTangent, v);
+                const c2 = cross(point, rightTangent, v);
+                
+                if (c1 > 0) leftTangent = v;
+                if (c2 < 0) rightTangent = v;
+            });
+
+            ctx.strokeStyle = "red";
+            ctx.setLineDash([5, 5]);
+            drawInfiniteLine(point, leftTangent);
+            drawInfiniteLine(point, rightTangent);
+            ctx.setLineDash([]);
+            
+            infoText.textContent = "Correct tangents drawn!";
+        }
+
+        function drawInfiniteLine(a, b) {
+            const dir = [b[0] - a[0], b[1] - a[1]];
+            const scale = 1000;
+            
+            ctx.beginPath();
+            ctx.moveTo(a[0] - dir[0] * scale, a[1] - dir[1] * scale);
+            ctx.lineTo(b[0] + dir[0] * scale, b[1] + dir[1] * scale);
+            ctx.stroke();
+        }
+
+        function drawScene() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+
+            // Draw main polygon
+            ctx.strokeStyle = "black";
+            ctx.beginPath();
+            polygon.forEach(([x, y], i) => {
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.closePath();
+            ctx.stroke();
+
+            // Draw point
+            if (point) {
+                ctx.fillStyle = "blue";
+                ctx.beginPath();
+                ctx.arc(point[0], point[1], 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillText(`(${Math.round(point[0])}, ${Math.round(point[1])})`, point[0] + 10, point[1]);
+            }
+
+            // Draw active triangle and wedges
+            if (activeTriangle) {
+                // Triangle
+                ctx.strokeStyle = "green";
+                ctx.beginPath();
+                activeTriangle.triangle.forEach(([x, y], i) => {
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.closePath();
+                ctx.stroke();
+
+                // Wedges
+                ctx.strokeStyle = "orange";
+                getWedges(activeTriangle).forEach(w => {
+                    drawInfiniteLine(w.start, w.end);
+                });
+            }
+
+            // Draw final wedges
+            if (finalWedges) {
+                ctx.strokeStyle = "purple";
+                finalWedges.forEach(w => {
+                    drawInfiniteLine(w.start, w.end);
+                });
+            }
+        }
+
+        // Initial draw
+        drawScene();
+    </script>
+</body>
+</html>

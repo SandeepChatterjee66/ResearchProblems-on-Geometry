@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upper Hull Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: #121212;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 2px solid #fff;
+            background: #222;
+        }
+        .controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            background: #0d6efd;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: 0.3s;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .stack {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Upper Hull Visualization</h2>
+    <div class="controls">
+        <button onclick="generateRandomPoints()">Generate Random Points</button>
+        <button onclick="playNextStep()">Play</button>
+    </div>
+    <div class="stack" id="stackView">Stack: []</div>
+    <script>
+        let points = [];
+        let upperHull = [];
+        let stepIndex = 0;
+
+        function setup() {
+            createCanvas(600, 400);
+        }
+
+        function draw() {
+            background(34);
+            drawGrid();
+            stroke(255);
+            fill(0, 255, 0);
+            for (let p of points) {
+                ellipse(p.x, p.y, 8, 8);
+            }
+            drawUpperHull();
+        }
+
+        function drawGrid() {
+            stroke(100);
+            for (let i = 0; i <= width; i += 50) {
+                line(i, 0, i, height);
+            }
+            for (let i = 0; i <= height; i += 50) {
+                line(0, i, width, i);
+            }
+        }
+
+        function generateRandomPoints() {
+            points = [];
+            for (let i = 0; i < 10; i++) {
+                points.push(createVector(random(width), random(height)));
+            }
+            points.sort((a, b) => a.x - b.x);
+            upperHull = [];
+            stepIndex = 0;
+        }
+
+        function playNextStep() {
+            if (stepIndex >= points.length) return;
+            let p = points[stepIndex];
+            while (upperHull.length >= 2 && cross(upperHull[upperHull.length - 2], upperHull[upperHull.length - 1], p) <= 0) {
+                upperHull.pop();
+            }
+            upperHull.push(p);
+            stepIndex++;
+            updateStackView();
+        }
+
+        function cross(a, b, c) {
+            return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+        }
+
+        function drawUpperHull() {
+            stroke(0, 255, 255);
+            noFill();
+            beginShape();
+            for (let p of upperHull) {
+                vertex(p.x, p.y);
+            }
+            endShape();
+        }
+
+        function updateStackView() {
+            let stackView = document.getElementById("stackView");
+            stackView.innerHTML = "Stack: " + upperHull.map(p => `(${p.x.toFixed(1)}, ${p.y.toFixed(1)})`).join(" → ");
+        }
+    </script>
+</body>
+</html>
