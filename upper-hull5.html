@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Graham Scan Visualization</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+    canvas {
+      border: 2px solid #000;
+      background-color: #ffffff;
+      display: block;
+      margin: 20px auto;
+    }
+    .controls {
+      margin-bottom: 15px;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      border-radius: 5px;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    button:hover:not(:disabled) {
+      background-color: #0056b3;
+    }
+    .stack-container {
+      margin-top: 20px;
+      padding: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      min-height: 60px;
+    }
+    .stack-block {
+      padding: 10px;
+      background-color: #ffcc00;
+      border: 1px solid #000;
+      border-radius: 5px;
+      font-weight: bold;
+    }
+    .status {
+      margin-top: 10px;
+      font-weight: bold;
+      color: #007bff;
+    }
+  </style>
+</head>
+<body>
+  <h1>Graham Scan Visualization</h1>
+  <div class="controls">
+    <button id="generateBtn" onclick="generateRandomPoints()">Generate Random Points</button>
+    <button id="startBtn" onclick="startGrahamScan()">Start Algorithm</button>
+    <button id="nextBtn" onclick="stepForward()" disabled>Next Step</button>
+  </div>
+  <div class="status" id="status">Generate points to begin</div>
+  <canvas id="canvas" width="600" height="400"></canvas>
+  <div class="stack-container" id="stack"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const nextBtn = document.getElementById("nextBtn");
+    const startBtn = document.getElementById("startBtn");
+    const statusDiv = document.getElementById("status");
+    
+    let points = [];
+    let sortedPoints = [];
+    let stack = [];
+    let operations = [];
+    let currentStep = 0;
+    let currentPointIndex = 1;  // Index of point being processed
+    let algorithmStarted = false;
+
+    function showToast(message) {
+      M.toast({html: message, classes: 'rounded', displayLength: 2000});
+    }
+
+    function setStatus(message) {
+      statusDiv.textContent = message;
+    }
+
+    function drawPoint(p, color = "black", size = 5) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "black";
+      ctx.fillText(p.label, p.x + 8, p.y - 8);
+    }
+
+    function drawPoints() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.font = "14px Arial";
+      
+      // Draw all points
+      points.forEach(p => drawPoint(p));
+      
+      // Draw current hull
+      if (stack.length > 1) {
+        ctx.strokeStyle = "red";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(stack[0].x, stack[0].y);
+        for (let i = 1; i < stack.length; i++) {
+          ctx.lineTo(stack[i].x, stack[i].y);
+        }
+        ctx.stroke();
+      }
+      
+      // Highlight stack points
+      stack.forEach(p => drawPoint(p, "blue", 6));
+      
+      // Highlight current point being considered
+      if (currentPointIndex < sortedPoints.length && algorithmStarted) {
+        drawPoint(sortedPoints[currentPointIndex], "green", 7);
+      }
+    }
+
+    function generateRandomPoints() {
+      points = [];
+      for (let i = 0; i < 8; i++) {
+        const x = 50 + Math.random() * (canvas.width - 100);
+        const y = 50 + Math.random() * (canvas.height - 100);
+        points.push({label: `P${i}`, x, y});
+      }
+      stack = [];
+      operations = [];
+      currentStep = 0;
+      currentPointIndex = 1;
+      algorithmStarted = false;
+      
+      drawPoints();
+      updateStackUI();
+      nextBtn.disabled = true;
+      startBtn.disabled = false;
+      setStatus("Points generated. Click 'Start Algorithm' to begin Graham Scan.");
+    }
+
+    function crossProduct(o, a, b) {
+      return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    }
+
+    function startGrahamScan() {
+      // Sort points by x-coordinate
+      sortedPoints = [...points].sort((a, b) => a.x - b.x);
+      stack = [];
+      operations = [];
+      currentStep = 0;
+      currentPointIndex = 1;
+      algorithmStarted = true;
+
+      // Push first point
+      stack.push(sortedPoints[0]);
+      updateStackUI();
+      drawPoints();
+
+      nextBtn.disabled = false;
+      startBtn.disabled = true;
+      setStatus("Starting with leftmost point. Click 'Next Step' to continue.");
+    }
+
+    function updateStackUI() {
+      const stackContainer = document.getElementById("stack");
+      stackContainer.innerHTML = "";
+      stack.forEach(p => {
+        const block = document.createElement("div");
+        block.className = "stack-block";
+        block.textContent = p.label;
+        stackContainer.appendChild(block);
+      });
+    }
+
+    function animateStackOperation(operation) {
+      return new Promise((resolve) => {
+        const stackContainer = document.getElementById("stack");
+        
+        if (operation.type === "pop") {
+          const blocks = stackContainer.getElementsByClassName("stack-block");
+          const lastBlock = blocks[blocks.length - 1];
+          
+          gsap.to(lastBlock, {
+            scale: 0,
+            opacity: 0,
+            duration: 0.5,
+            onComplete: () => {
+              lastBlock.remove();
+              stack.pop();
+              drawPoints();
+              resolve();
+            }
+          });
+        } else if (operation.type === "push") {
+          const block = document.createElement("div");
+          block.className = "stack-block";
+          block.textContent = operation.point.label;
+          block.style.opacity = "0";
+          block.style.scale = "0";
+          stackContainer.appendChild(block);
+          
+          stack.push(operation.point);
+          drawPoints();
+
+          gsap.to(block, {
+            scale: 1,
+            opacity: 1,
+            duration: 0.5,
+            ease: "back.out(1.7)",
+            onComplete: resolve
+          });
+        }
+      });
+    }
+
+    async function stepForward() {
+      if (!algorithmStarted || currentPointIndex >= sortedPoints.length) {
+        nextBtn.disabled = true;
+        setStatus("Graham Scan completed!");
+        return;
+      }
+
+      nextBtn.disabled = true;
+      const currentPoint = sortedPoints[currentPointIndex];
+
+      // Check for points to pop
+      while (stack.length >= 2) {
+        const top = stack[stack.length - 1];
+        const nextToTop = stack[stack.length - 2];
+        
+        if (crossProduct(nextToTop, top, currentPoint) <= 0) {
+          showToast(`Popping point ${top.label} as it makes a non-left turn`);
+          await animateStackOperation({type: "pop", point: top});
+        } else {
+          break;
+        }
+      }
+
+      // Push current point
+      showToast(`Adding point ${currentPoint.label} to hull`);
+      await animateStackOperation({type: "push", point: currentPoint});
+      
+      currentPointIndex++;
+      nextBtn.disabled = false;
+      
+      if (currentPointIndex >= sortedPoints.length) {
+        setStatus("Graham Scan completed!");
+        nextBtn.disabled = true;
+      } else {
+        setStatus(`Processing point ${sortedPoints[currentPointIndex].label}`);
+      }
+    }
+
+    // Initial setup
+    generateRandomPoints();
+  </script>
+</body>
+</html>

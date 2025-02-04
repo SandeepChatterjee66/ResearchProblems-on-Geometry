@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upper Hull Visualization</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+    canvas {
+      border: 2px solid #000;
+      background-color: #ffffff;
+      display: block;
+      margin: 20px auto;
+    }
+    .controls {
+      margin-bottom: 15px;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      border-radius: 5px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .stack-container {
+      margin-top: 20px;
+      padding: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+    .stack-block {
+      padding: 10px;
+      background-color: #ffcc00;
+      border: 1px solid #000;
+      border-radius: 5px;
+      font-weight: bold;
+      transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    }
+    .toast-container {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      z-index: 9999;
+    }
+  </style>
+</head>
+<body>
+  <h1>Upper Hull Visualization</h1>
+  <div class="controls">
+    <button onclick="generateRandomPoints()">Generate Random Points</button>
+    <button onclick="startGrahamScan()">Start Algorithm</button>
+    <button onclick="stepForward()">Play Next Edge</button>
+  </div>
+  <canvas id="canvas" width="600" height="400"></canvas>
+  <div class="stack-container" id="stack"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    let points = [];
+    let stack = [];
+    let steps = [];
+    let stepIndex = 0;
+
+    function showToast(message) {
+      M.toast({ html: message, classes: 'rounded', displayLength: 1500 });
+    }
+
+    function drawPoints() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "black";
+      ctx.font = "14px Arial";
+      points.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillText(p.label, p.x + 8, p.y - 8);
+      });
+    }
+
+    function generateRandomPoints() {
+      points = [];
+      for (let i = 0; i < 10; i++) {
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+        points.push({ label: `p${i + 1}`, x, y });
+      }
+      points.sort((a, b) => a.x - b.x);
+      stack = [];
+      steps = [];
+      stepIndex = 0;
+      updateStackUI();
+      drawPoints();
+    }
+
+    function crossProduct(o, a, b) {
+      return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    }
+
+    function startGrahamScan() {
+      stack = [];
+      steps = [];
+      stepIndex = 0;
+      for (let p of points) {
+        while (stack.length >= 2 && crossProduct(stack[stack.length - 2], stack[stack.length - 1], p) <= 0) {
+          let removed = stack.pop();
+          steps.push({ type: "pop", point: removed });
+        }
+        stack.push(p);
+        steps.push({ type: "push", point: p });
+      }
+      stepIndex = 0;
+      updateStackUI();
+      drawPoints();
+    }
+
+    function stepForward() {
+      if (stepIndex < steps.length) {
+        const action = steps[stepIndex];
+        if (action.type === "pop") {
+          showToast(`Popped ${action.point.label}`);
+          animatePop(action.point.label);
+          stack.pop();
+        } else if (action.type === "push") {
+          showToast(`Pushed ${action.point.label}`);
+          animatePush(action.point.label);
+        }
+        drawHull();  
+        stepIndex++;
+      }
+    }
+
+    function drawHull() {
+      drawPoints();
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (stack.length > 1) {
+        ctx.moveTo(stack[0].x, stack[0].y);
+        for (let i = 1; i < stack.length; i++) {
+          ctx.lineTo(stack[i].x, stack[i].y);
+        }
+      }
+      ctx.stroke();
+    }
+
+    function updateStackUI() {
+      const stackContainer = document.getElementById("stack");
+      stackContainer.innerHTML = "";
+      stack.forEach(p => {
+        const block = document.createElement("div");
+        block.className = "stack-block";
+        block.textContent = p.label;
+        stackContainer.appendChild(block);
+      });
+    }
+
+    function animatePop(label) {
+      const stackContainer = document.getElementById("stack");
+      const blocks = stackContainer.getElementsByClassName("stack-block");
+      for (let block of blocks) {
+        if (block.textContent === label) {
+          anime({
+            targets: block,
+            scale: [1, 1.5, 0],
+            opacity: [1, 0],
+            duration: 500,
+            easing: "easeOutCubic",
+            complete: () => {
+              block.remove();
+              updateStackUI();
+            }
+          });
+          break;
+        }
+      }
+    }
+
+    function animatePush(label) {
+      const stackContainer = document.getElementById("stack");
+      const block = document.createElement("div");
+      block.className = "stack-block";
+      block.textContent = label;
+      block.style.opacity = "0";
+      stackContainer.appendChild(block);
+
+      gsap.fromTo(block, 
+        { scale: 0.5, opacity: 0.2 }, 
+        { scale: 1.2, opacity: 1, duration: 0.3, yoyo: true, repeat: 1, ease: "elastic.out(1, 0.5)" }
+      );
+    }
+  </script>
+</body>
+</html>
