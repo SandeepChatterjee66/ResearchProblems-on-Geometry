@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Previous head content remains the same -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Point-in-Polygon Binary Search Visualization</title>
+    <style>
+        /* Previous styles remain the same */
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .canvas-container {
+            position: relative;
+            margin: 20px;
+        }
+        canvas {
+            border: 2px solid #333;
+            background-color: white;
+        }
+        .controls {
+            margin: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 10px;
+            font-size: 18px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>Point-in-Polygon Binary Search Visualization</h1>
+    <div class="controls">
+        <button id="generateBtn">Generate New Polygon</button>
+        <button id="placePointBtn" disabled>Place Point</button>
+        <button id="startSearchBtn" disabled>Start Search</button>
+    </div>
+    <div class="canvas-container">
+        <canvas id="canvas" width="800" height="600"></canvas>
+    </div>
+    <div id="status">Click 'Generate New Polygon' to begin</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const generateBtn = document.getElementById('generateBtn');
+        const placePointBtn = document.getElementById('placePointBtn');
+        const startSearchBtn = document.getElementById('startSearchBtn');
+        const status = document.getElementById('status');
+
+        // Initialize all state variables
+        let polygon = [];
+        let testPoint = null;
+        let triangulation = [];
+        let currentTriangle = null;
+        let isSearching = false;
+        let isPlacingPoint = false;
+        let triangleColors = [];
+        let baseVertex = null;
+        let currentWedges = null;
+
+        function drawGrid() {
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+
+            for (let x = 0; x <= canvas.width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+
+            for (let y = 0; y <= canvas.height; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height/2);
+            ctx.lineTo(canvas.width, canvas.height/2);
+            ctx.moveTo(canvas.width/2, 0);
+            ctx.lineTo(canvas.width/2, canvas.height);
+            ctx.stroke();
+        }
+
+        function generateConvexPolygon() {
+            const numPoints = 6 + Math.floor(Math.random() * 4);
+            const center = { x: canvas.width / 2, y: canvas.height / 2 };
+            const radius = Math.min(canvas.width, canvas.height) * 0.3;
+            
+            let vertices = [];
+            for (let i = 0; i < numPoints; i++) {
+                const angle = (i / numPoints) * 2 * Math.PI;
+                const jitter = radius * 0.2;
+                const r = radius + (Math.random() * jitter - jitter/2);
+                vertices.push({
+                    x: center.x + r * Math.cos(angle),
+                    y: center.y + r * Math.sin(angle)
+                });
+            }
+
+            vertices.sort((a, b) => 
+                Math.atan2(a.y - center.y, a.x - center.x) -
+                Math.atan2(b.y - center.y, b.x - center.x)
+            );
+
+            return vertices;
+        }
+
+        function triangulatePolygon() {
+            if (!polygon || polygon.length < 3) return;
+            
+            triangulation = [];
+            baseVertex = polygon[0];
+            
+            for (let i = 1; i < polygon.length - 1; i++) {
+                triangulation.push({
+                    vertices: [baseVertex, polygon[i], polygon[i + 1]],
+                    leftEdge: [baseVertex, polygon[i]],
+                    rightEdge: [baseVertex, polygon[i + 1]]
+                });
+            }
+
+            triangleColors = new Array(triangulation.length).fill('rgba(255, 255, 0, 0.3)');
+        }
+
+        function crossProduct(o, a, b) {
+            return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+        }
+
+        function isPointInWedge(point, triangle) {
+            const leftCross = crossProduct(triangle.vertices[0], triangle.vertices[1], point);
+            const rightCross = crossProduct(triangle.vertices[0], triangle.vertices[2], point);
+            return leftCross <= 0 && rightCross >= 0;
+        }
+
+        function isPointInTriangle(point, triangle) {
+            const v1 = triangle.vertices[0];
+            const v2 = triangle.vertices[1];
+            const v3 = triangle.vertices[2];
+            
+            const d1 = crossProduct(point, v1, v2);
+            const d2 = crossProduct(point, v2, v3);
+            const d3 = crossProduct(point, v3, v1);
+            
+            return (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
+        }
+
+        function drawWedge(triangle) {
+            if (!triangle) return;
+            
+            const basePoint = triangle.vertices[0];
+            const leftPoint = triangle.vertices[1];
+            const rightPoint = triangle.vertices[2];
+            
+            const leftDir = {
+                x: leftPoint.x - basePoint.x,
+                y: leftPoint.y - basePoint.y
+            };
+            const rightDir = {
+                x: rightPoint.x - basePoint.x,
+                y: rightPoint.y - basePoint.y
+            };
+            
+            const scale = 1000;
+            const leftEnd = {
+                x: basePoint.x + leftDir.x * scale,
+                y: basePoint.y + leftDir.y * scale
+            };
+            const rightEnd = {
+                x: basePoint.x + rightDir.x * scale,
+                y: basePoint.y + rightDir.y * scale
+            };
+            
+            ctx.strokeStyle = 'purple';
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(basePoint.x, basePoint.y);
+            ctx.lineTo(leftEnd.x, leftEnd.y);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(basePoint.x, basePoint.y);
+            ctx.lineTo(rightEnd.x, rightEnd.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        async function binarySearchStep(left, right) {
+            if (left > right) return false;
+
+            const mid = Math.floor((left + right) / 2);
+            currentTriangle = triangulation[mid];
+            currentWedges = currentTriangle;
+
+            triangleColors = triangleColors.map(
+                (_, i) => i >= left && i <= right ? 'rgba(255, 255, 0, 0.3)' : 'rgba(200, 200, 200, 0.2)'
+            );
+            triangleColors[mid] = 'rgba(0, 255, 0, 0.3)';
+            
+            drawScene();
+            status.textContent = `Checking triangle ${mid + 1} of ${triangulation.length}`;
+            
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            if (isPointInWedge(testPoint, currentTriangle)) {
+                if (isPointInTriangle(testPoint, currentTriangle)) {
+                    status.textContent = 'Point is INSIDE the polygon!';
+                    return true;
+                }
+                status.textContent = 'Point is OUTSIDE the polygon. Drawing tangents...';
+                return false;
+            }
+
+            const isLeftOfWedge = crossProduct(
+                currentTriangle.vertices[0],
+                currentTriangle.vertices[1],
+                testPoint
+            ) > 0;
+
+            if (isLeftOfWedge) {
+                return await binarySearchStep(mid + 1, right);
+            } else {
+                return await binarySearchStep(left, mid - 1);
+            }
+        }
+
+        function calculateTangents() {
+            let leftTangentVertex = null;
+            let rightTangentVertex = null;
+            let maxLeftAngle = -Infinity;
+            let maxRightAngle = Infinity;
+
+            for (let i = 0; i < polygon.length; i++) {
+                const vertex = polygon[i];
+                const angle = Math.atan2(vertex.y - testPoint.y, vertex.x - testPoint.x);
+                
+                let isValidLeft = true;
+                for (let j = 0; j < polygon.length; j++) {
+                    if (j !== i && crossProduct(testPoint, vertex, polygon[j]) < 0) {
+                        isValidLeft = false;
+                        break;
+                    }
+                }
+                if (isValidLeft && angle > maxLeftAngle) {
+                    maxLeftAngle = angle;
+                    leftTangentVertex = vertex;
+                }
+
+                let isValidRight = true;
+                for (let j = 0; j < polygon.length; j++) {
+                    if (j !== i && crossProduct(testPoint, vertex, polygon[j]) > 0) {
+                        isValidRight = false;
+                        break;
+                    }
+                }
+                if (isValidRight && angle < maxRightAngle) {
+                    maxRightAngle = angle;
+                    rightTangentVertex = vertex;
+                }
+            }
+
+            return { left: leftTangentVertex, right: rightTangentVertex };
+        }
+
+        function drawTangents() {
+            const tangents = calculateTangents();
+            
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            
+            if (tangents.left) {
+                ctx.beginPath();
+                ctx.moveTo(testPoint.x, testPoint.y);
+                ctx.lineTo(tangents.left.x, tangents.left.y);
+                ctx.stroke();
+            }
+            
+            if (tangents.right) {
+                ctx.beginPath();
+                ctx.moveTo(testPoint.x, testPoint.y);
+                ctx.lineTo(tangents.right.x, tangents.right.y);
+                ctx.stroke();
+            }
+            
+            ctx.setLineDash([]);
+        }
+
+        function drawScene() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            
+            if (triangulation.length > 0) {
+                triangulation.forEach((triangle, index) => {
+                    ctx.fillStyle = triangleColors[index];
+                    ctx.strokeStyle = '#666';
+                    ctx.lineWidth = 1;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(triangle.vertices[0].x, triangle.vertices[0].y);
+                    ctx.lineTo(triangle.vertices[1].x, triangle.vertices[1].y);
+                    ctx.lineTo(triangle.vertices[2].x, triangle.vertices[2].y);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                });
+            }
+            
+            if (currentWedges) {
+                drawWedge(currentWedges);
+            }
+            
+            if (polygon && polygon.length > 0) {
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(polygon[0].x, polygon[0].y);
+                for (let i = 1; i < polygon.length; i++) {
+                    ctx.lineTo(polygon[i].x, polygon[i].y);
+                }
+                ctx.closePath();
+                ctx.stroke();
+            }
+            
+            if (testPoint) {
+                ctx.fillStyle = 'blue';
+                ctx.beginPath();
+                ctx.arc(testPoint.x, testPoint.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Event Listeners
+        generateBtn.addEventListener('click', () => {
+            polygon = generateConvexPolygon();
+            testPoint = null;
+            triangulation = [];
+            triangleColors = [];
+            currentTriangle = null;
+            currentWedges = null;
+            drawScene();
+            triangulatePolygon();
+            status.textContent = 'Polygon generated. Click "Place Point" to continue.';
+            placePointBtn.disabled = false;
+            startSearchBtn.disabled = true;
+        });
+
+        placePointBtn.addEventListener('click', () => {
+            isPlacingPoint = true;
+            status.textContent = 'Click anywhere on the grid to place a point.';
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (!isPlacingPoint) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            testPoint = {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+            
+            isPlacingPoint = false;
+            drawScene();
+            status.textContent = 'Point placed. Click "Start Search" to begin the binary search.';
+            startSearchBtn.disabled = false;
+        });
+
+        startSearchBtn.addEventListener('click', async () => {
+            if (!testPoint || isSearching) return;
+            isSearching = true;
+            startSearchBtn.disabled = true;
+            currentWedges = null;
+            
+            const isInside = await binarySearchStep(0, triangulation.length - 1);
+            if (!isInside) {
+                drawTangents();
+            }
+            
+            isSearching = false;
+            startSearchBtn.disabled = false;
+        });
+
+        // Initial draw
+        drawScene();
+    </script>
+</body>
+</html>
