@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Convex Hull Spiral Visualization</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <style>
+    /* Modern and Responsive Design */
+    body {
+      margin: 0;
+      font-family: 'Arial', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .controls input, .controls button {
+      padding: 10px;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .controls input[type="number"] {
+      width: 100px;
+    }
+    .controls button {
+      background-color: #6a11cb;
+      color: white;
+      transition: background-color 0.3s ease;
+    }
+    .controls button:hover {
+      background-color: #4a0d90;
+    }
+    canvas {
+      border: 2px solid #6a11cb;
+      border-radius: 10px;
+      background: white;
+      max-width: 90vw;
+      max-height: 70vh;
+    }
+    .status {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Convex Hull Spiral Visualization</h1>
+  </div>
+  <div class="controls">
+    <input type="number" id="pointCount" value="50" min="3" placeholder="Number of Points">
+    <button id="generateBtn">Generate</button>
+  </div>
+  <canvas id="canvas"></canvas>
+  <div class="status" id="status">Enter the number of points and click "Generate".</div>
+
+  <script>
+    // JavaScript Code Below
+    // Constants
+const COLORS = ['#FF5733', '#33FF57', '#3357FF', '#F3FF33', '#FF33F3'];
+const STEP_DELAY = 500;
+
+// DOM Elements
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const pointCountInput = document.getElementById('pointCount');
+const generateBtn = document.getElementById('generateBtn');
+const statusDiv = document.getElementById('status');
+
+// State Variables
+let points = [];
+let remainingPoints = [];
+let allHulls = [];
+let spiralConnections = [];
+let currentLevel = 0;
+let animationInProgress = false;
+
+// Responsive Canvas Setup
+function resizeCanvas() {
+  canvas.width = Math.min(window.innerWidth * 0.9, 800);
+  canvas.height = Math.min(window.innerHeight * 0.7, 600);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// Apply Transformations
+function applyTransform() {
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  ctx.setTransform(1, 0, 0, 1, centerX, centerY);
+}
+
+// Draw Grid
+function setupGrid() {
+  const width = canvas.width;
+  const height = canvas.height;
+
+  ctx.strokeStyle = '#e0e0e0';
+  ctx.lineWidth = 0.5;
+
+  for (let x = -width / 2; x <= width / 2; x += 50) {
+    ctx.beginPath();
+    ctx.moveTo(x, -height / 2);
+    ctx.lineTo(x, height / 2);
+    ctx.stroke();
+  }
+
+  for (let y = -height / 2; y <= height / 2; y += 50) {
+    ctx.beginPath();
+    ctx.moveTo(-width / 2, y);
+    ctx.lineTo(width / 2, y);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 2;
+
+  ctx.beginPath();
+  ctx.moveTo(-width / 2, 0);
+  ctx.lineTo(width / 2, 0);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(0, -height / 2);
+  ctx.lineTo(0, height / 2);
+  ctx.stroke();
+}
+
+// Generate Random Points
+function generatePoints() {
+  const count = parseInt(pointCountInput.value);
+  if (isNaN(count) || count < 3) {
+    alert('Please enter a valid number of points (minimum 3).');
+    return;
+  }
+
+  points = [];
+  const radius = Math.min(canvas.width, canvas.height) / 4;
+
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * 2 * Math.PI;
+    const r = Math.random() * radius;
+    const x = r * Math.cos(angle);
+    const y = r * Math.sin(angle);
+    points.push({ x, y, color: COLORS[0] });
+  }
+
+  remainingPoints = [...points];
+  allHulls = [];
+  spiralConnections = [];
+  currentLevel = 0;
+
+  redraw();
+  generateBtn.disabled = true;
+  statusDiv.textContent = 'Starting spiral creation...';
+  setTimeout(step, STEP_DELAY);
+}
+
+// Cross Product for Orientation
+function cross(o, a, b) {
+  return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+}
+
+// Compute Convex Hull (Graham Scan)
+function computeConvexHull(points) {
+  if (points.length < 3) return points;
+
+  let start = points.reduce((min, p) => 
+    p.y < min.y || (p.y === min.y && p.x < min.x) ? p : min, points[0]);
+
+  let sorted = points.filter(p => p !== start)
+    .sort((a, b) => {
+      let crossProduct = (a.x - start.x) * (b.y - start.y) -
+                         (b.x - start.x) * (a.y - start.y);
+      return crossProduct !== 0 ? -crossProduct :
+        ((a.x - start.x) ** 2 + (a.y - start.y) ** 2) -
+        ((b.x - start.x) ** 2 + (b.y - start.y) ** 2);
+    });
+
+  let hull = [start];
+  for (let point of sorted) {
+    while (hull.length > 1 && cross(hull[hull.length - 2], hull[hull.length - 1], point) <= 0) {
+      hull.pop();
+    }
+    hull.push(point);
+  }
+  return hull;
+}
+
+async function animateHull(hull, color) {
+  for (let i = 0; i < hull.length; i++) {
+    const start = hull[i];
+    const end = hull[(i + 1) % hull.length];
+
+    if (i === hull.length - 1) continue;
+
+    await new Promise(resolve => {
+      gsap.to({}, {
+        duration: 0.3,
+        onUpdate: (progress) => { // Use onUpdateParams to pass progress
+          redraw();
+          ctx.beginPath();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3;
+          ctx.moveTo(start.x, start.y);
+          ctx.lineTo(
+            start.x + (end.x - start.x) * progress,
+            start.y + (end.y - start.y) * progress
+          );
+          ctx.stroke();
+        },
+        onUpdateParams: ['{self}.progress'], // Pass the progress value
+        onComplete: resolve
+      });
+    });
+  }
+}
+
+async function animateConnection(from, to, color) {
+  await new Promise(resolve => {
+    gsap.to({}, {
+      duration: 0.3,
+      onUpdate: (progress) => { // Use onUpdateParams to pass progress
+        redraw();
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(
+          from.x + (to.x - from.x) * progress,
+          from.y + (to.y - from.y) * progress
+        );
+        ctx.stroke();
+      },
+      onUpdateParams: ['{self}.progress'], // Pass the progress value
+      onComplete: resolve
+    });
+  });
+}
+
+// Step-by-Step Animation
+async function step() {
+  if (animationInProgress) return;
+  animationInProgress = true;
+
+  if (remainingPoints.length < 3) {
+    if (remainingPoints.length > 0) {
+      const lastPoints = remainingPoints;
+      lastPoints.forEach(p => p.color = COLORS[currentLevel % COLORS.length]);
+
+      if (allHulls.length > 0) {
+        const lastHull = allHulls[allHulls.length - 1];
+        for (let point of lastPoints) {
+          const connection = { from: lastHull[lastHull.length - 1], to: point, color: COLORS[currentLevel % COLORS.length] };
+          spiralConnections.push(connection);
+          await animateConnection(connection.from, connection.to, COLORS[currentLevel % COLORS.length]);
+        }
+      }
+    }
+
+    statusDiv.textContent = 'Spiral complete!';
+    generateBtn.disabled = false;
+    animationInProgress = false;
+    return;
+  }
+
+  const hull = computeConvexHull(remainingPoints);
+  hull.forEach(p => p.color = COLORS[currentLevel % COLORS.length]);
+
+  await animateHull(hull, COLORS[currentLevel % COLORS.length]);
+
+  if (allHulls.length > 0) {
+    const prevHull = allHulls[allHulls.length - 1];
+    const connection = { from: hull[hull.length - 1], to: prevHull[0], color: COLORS[currentLevel % COLORS.length] };
+    spiralConnections.push(connection);
+    await animateConnection(connection.from, connection.to, COLORS[currentLevel % COLORS.length]);
+  }
+
+  allHulls.push(hull);
+  remainingPoints = remainingPoints.filter(p => !hull.includes(p));
+  currentLevel++;
+
+  redraw();
+  statusDiv.textContent = `Level ${currentLevel} complete. ${remainingPoints.length} points remaining.`;
+  animationInProgress = false;
+
+  if (remainingPoints.length > 0) {
+    setTimeout(step, STEP_DELAY);
+  } else {
+    generateBtn.disabled = false;
+  }
+}
+
+// Redraw Canvas
+function redraw() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  applyTransform();
+  setupGrid();
+
+  points.forEach(p => {
+    ctx.beginPath();
+    ctx.fillStyle = p.color;
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  allHulls.forEach((hull, i) => {
+    ctx.beginPath();
+    ctx.strokeStyle = COLORS[i % COLORS.length];
+    ctx.lineWidth = 3;
+    for (let j = 0; j < hull.length; j++) {
+      const nextIdx = (j + 1) % hull.length;
+      if (j === 0) ctx.moveTo(hull[j].x, hull[j].y);
+      if (j !== hull.length - 1) {
+        ctx.lineTo(hull[nextIdx].x, hull[nextIdx].y);
+      }
+    }
+    ctx.stroke();
+  });
+
+  spiralConnections.forEach(connection => {
+    ctx.beginPath();
+    ctx.strokeStyle = connection.color;
+    ctx.lineWidth = 3;
+    ctx.moveTo(connection.from.x, connection.from.y);
+    ctx.lineTo(connection.to.x, connection.to.y);
+    ctx.stroke();
+  });
+}
+
+// Event Listeners
+generateBtn.addEventListener('click', generatePoints);
+
+// Initial Setup
+applyTransform();
+setupGrid();
+  </script>
+</body>
+</html>
