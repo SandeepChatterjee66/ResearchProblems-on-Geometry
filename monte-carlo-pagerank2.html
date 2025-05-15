@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distributed PageRank Visualization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        .node {
+            stroke: #fff;
+            stroke-width: 1.5px;
+            transition: all 0.3s ease;
+        }
+        
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+            stroke-width: 1.5px;
+        }
+        
+        .arrow {
+            fill: #999;
+            stroke-opacity: 0.6;
+        }
+        
+        .node-text {
+            font-size: 10px;
+            font-weight: bold;
+            pointer-events: none;
+        }
+        
+        .pagerank-text {
+            font-size: 8px;
+            pointer-events: none;
+        }
+        
+        .token {
+            fill: #ff5722;
+            stroke: #fff;
+            stroke-width: 1px;
+            transition: all 0.3s ease;
+        }
+        
+        .current-node {
+            filter: url(#glow);
+        }
+        
+        .info-panel {
+            transition: all 0.3s ease;
+        }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+        
+        .control-panel {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        
+        .coupon {
+            fill: #4CAF50;
+            stroke: #fff;
+            stroke-width: 0.5px;
+        }
+        
+        .walk-line {
+            stroke: #FF9800;
+            stroke-width: 2px;
+            stroke-dasharray: 5,5;
+            animation: dash 1s linear infinite;
+        }
+        
+        @keyframes dash {
+            to {
+                stroke-dashoffset: -10;
+            }
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen p-4">
+    <div class="container mx-auto">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Distributed PageRank Simulation</h1>
+        
+        <div class="flex flex-col lg:flex-row gap-6">
+            <!-- Graph Visualization Area -->
+            <div class="flex-1 bg-white rounded-lg shadow-lg p-4">
+                <div id="graph-container" class="w-full h-full min-h-[500px]"></div>
+            </div>
+            
+            <!-- Control Panel -->
+            <div class="w-full lg:w-80 control-panel bg-white rounded-lg p-4">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Controls</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Number of Nodes</label>
+                        <input type="number" id="node-count" min="5" max="50" value="20" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Edge Probability</label>
+                        <input type="range" id="edge-prob" min="0.01" max="0.5" step="0.01" value="0.1" 
+                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <span id="edge-prob-value" class="text-xs text-gray-600">0.1</span>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Epsilon (ε)</label>
+                        <input type="range" id="epsilon" min="0.01" max="0.5" step="0.01" value="0.1" 
+                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <span id="epsilon-value" class="text-xs text-gray-600">0.1</span>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Constant (c)</label>
+                        <input type="range" id="constant-c" min="0.1" max="5" step="0.1" value="1" 
+                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <span id="constant-c-value" class="text-xs text-gray-600">1</span>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Animation Speed</label>
+                        <input type="range" id="animation-speed" min="10" max="500" step="10" value="100" 
+                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <span id="speed-value" class="text-xs text-gray-600">Medium</span>
+                    </div>
+                    
+                    <div class="flex space-x-2">
+                        <button id="step-btn" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md transition">
+                            Step Round
+                        </button>
+                        <button id="run-btn" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-md transition">
+                            Run Simulation
+                        </button>
+                        <button id="reset-btn" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-md transition">
+                            Reset
+                        </button>
+                    </div>
+                    
+                    <div class="pt-4 border-t border-gray-200">
+                        <h3 class="text-sm font-medium text-gray-700 mb-2">Simulation Stats</h3>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="text-gray-600">Rounds:</div>
+                            <div id="round-count" class="font-medium">0</div>
+                            
+                            <div class="text-gray-600">Total Messages:</div>
+                            <div id="total-messages" class="font-medium">0</div>
+                            
+                            <div class="text-gray-600">Current Action:</div>
+                            <div id="action-type" class="font-medium">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Node Information Panel -->
+            <div id="info-panel" class="w-full lg:w-80 info-panel bg-white rounded-lg p-4 hidden">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xl font-semibold text-gray-700">Node Details</h2>
+                    <button id="close-panel" class="text-gray-500 hover:text-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="space-y-3 text-sm">
+                    <div class="grid grid-cols-2">
+                        <div class="text-gray-600">Node ID:</div>
+                        <div id="detail-id" class="font-medium">-</div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2">
+                        <div class="text-gray-600">Out Degree:</div>
+                        <div id="detail-degree" class="font-medium">-</div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2">
+                        <div class="text-gray-600">Active Coupons:</div>
+                        <div id="detail-coupons" class="font-medium">-</div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2">
+                        <div class="text-gray-600">Total Visits (ζ):</div>
+                        <div id="detail-visits" class="font-medium">-</div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2">
+                        <div class="text-gray-600">PageRank:</div>
+                        <div id="detail-pagerank" class="font-medium">-</div>
+                    </div>
+                    
+                    <div>
+                        <div class="text-gray-600 mb-1">Connected To:</div>
+                        <div id="detail-connections" class="text-xs bg-gray-100 p-2 rounded max-h-32 overflow-y-auto"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Main variables
+        let graph = {
+            nodes: [],
+            links: []
+        };
+        let simulation;
+        let svg;
+        let couponCount = [];
+        let zeta = [];
+        let totalRounds = 0;
+        let totalMessages = 0;
+        let isRunning = false;
+        let runInterval;
+        let animationSpeed = 100;
+        let epsilon = 0.1;
+        let constantC = 1;
+        let K = 0;
+        let numRounds = 0;
+        let B = 10;
+        
+        // Initialize the application
+        function init() {
+            // Set up event listeners for controls
+            document.getElementById('step-btn').addEventListener('click', stepRound);
+            document.getElementById('run-btn').addEventListener('click', toggleRun);
+            document.getElementById('reset-btn').addEventListener('click', resetSimulation);
+            document.getElementById('close-panel').addEventListener('click', closeInfoPanel);
+            
+            document.getElementById('edge-prob').addEventListener('input', function() {
+                const value = parseFloat(this.value).toFixed(2);
+                document.getElementById('edge-prob-value').textContent = value;
+            });
+            
+            document.getElementById('epsilon').addEventListener('input', function() {
+                epsilon = parseFloat(this.value);
+                document.getElementById('epsilon-value').textContent = epsilon.toFixed(2);
+                updateConstants();
+            });
+            
+            document.getElementById('constant-c').addEventListener('input', function() {
+                constantC = parseFloat(this.value);
+                document.getElementById('constant-c-value').textContent = constantC.toFixed(1);
+                updateConstants();
+            });
+            
+            document.getElementById('animation-speed').addEventListener('input', function() {
+                animationSpeed = parseInt(this.value);
+                const speedText = animationSpeed < 50 ? 'Fast' : 
+                                 animationSpeed < 150 ? 'Medium' : 'Slow';
+                document.getElementById('speed-value').textContent = speedText;
+                
+                if (isRunning) {
+                    clearInterval(runInterval);
+                    runInterval = setInterval(stepRound, 1000 - animationSpeed);
+                }
+            });
+            
+            // Create SVG container
+            svg = d3.select("#graph-container")
+                .append("svg")
+                .attr("width", "100%")
+                .attr("height", "100%")
+                .attr("viewBox", "0 0 800 600")
+                .attr("preserveAspectRatio", "xMidYMid meet");
+            
+            // Add filter for glow effect
+            const defs = svg.append("defs");
+            const filter = defs.append("filter")
+                .attr("id", "glow")
+                .attr("width", "130%")
+                .attr("height", "130%")
+                .attr("x", "-15%")
+                .attr("y", "-15%");
+            
+            filter.append("feGaussianBlur")
+                .attr("stdDeviation", "3.5")
+                .attr("result", "blur");
+            
+            filter.append("feComposite")
+                .attr("in", "SourceGraphic")
+                .attr("in2", "blur")
+                .attr("operator", "over");
+            
+            // Generate initial graph
+            generateGraph();
+        }
+        
+        // Update constants when parameters change
+        function updateConstants() {
+            const n = graph.nodes.length;
+            K = Math.max(1, Math.floor(constantC * Math.log(n)));
+            numRounds = Math.max(1, Math.floor(B * Math.log(n) / epsilon));
+        }
+        
+        // Generate a random directed graph
+        function generateGraph() {
+            const nodeCount = parseInt(document.getElementById('node-count').value);
+            const edgeProb = parseFloat(document.getElementById('edge-prob').value);
+            
+            // Create nodes
+            graph.nodes = Array.from({length: nodeCount}, (_, i) => ({
+                id: i,
+                name: `Node ${i}`,
+                x: Math.random() * 700 + 50,
+                y: Math.random() * 500 + 50,
+                degree: 0
+            }));
+            
+            // Create links with probability edgeProb
+            graph.links = [];
+            for (let i = 0; i < nodeCount; i++) {
+                for (let j = 0; j < nodeCount; j++) {
+                    if (i !== j && Math.random() < edgeProb) {
+                        graph.links.push({
+                            source: i,
+                            target: j
+                        });
+                        graph.nodes[i].degree++;
+                    }
+                }
+            }
+            
+            // Initialize simulation state
+            updateConstants();
+            couponCount = Array(nodeCount).fill(K);
+            zeta = Array(nodeCount).fill(K);
+            totalRounds = 0;
+            totalMessages = 0;
+            updateStats();
+            
+            // Render the graph
+            renderGraph();
+        }
+        
+        // Render the graph using D3 force layout
+        function renderGraph() {
+            // Clear existing elements
+            svg.selectAll("*").remove();
+            
+            // Add the arrow marker definition
+            svg.append("defs").append("marker")
+                .attr("id", "arrowhead")
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 15)
+                .attr("refY", 0)
+                .attr("orient", "auto")
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("xoverflow", "visible")
+                .append("svg:path")
+                .attr("d", "M 0,-5 L 10,0 L 0,5")
+                .attr("class", "arrow");
+            
+            // Re-add the glow filter (it was removed when we cleared the SVG)
+            const defs = svg.append("defs");
+            const filter = defs.append("filter")
+                .attr("id", "glow")
+                .attr("width", "130%")
+                .attr("height", "130%")
+                .attr("x", "-15%")
+                .attr("y", "-15%");
+            
+            filter.append("feGaussianBlur")
+                .attr("stdDeviation", "3.5")
+                .attr("result", "blur");
+            
+            filter.append("feComposite")
+                .attr("in", "SourceGraphic")
+                .attr("in2", "blur")
+                .attr("operator", "over");
+            
+            // Create force simulation
+            simulation = d3.forceSimulation(graph.nodes)
+                .force("link", d3.forceLink(graph.links).id(d => d.id).distance(100))
+                .force("charge", d3.forceManyBody().strength(-300))
+                .force("center", d3.forceCenter(400, 300))
+                .force("collision", d3.forceCollide().radius(30));
+            
+            // Create links
+            const link = svg.append("g")
+                .selectAll("line")
+                .data(graph.links)
+                .enter().append("line")
+                .attr("class", "link")
+                .attr("marker-end", "url(#arrowhead)");
+            
+            // Create nodes
+            const node = svg.append("g")
+                .selectAll("circle")
+                .data(graph.nodes)
+                .enter().append("circle")
+                .attr("class", "node")
+                .attr("r", d => getNodeRadius(zeta[d.id]))
+                .attr("fill", d => getColor(computePageRank(d.id)))
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended))
+                .on("click", showNodeInfo);
+            
+            // Add node labels
+            const nodeText = svg.append("g")
+                .selectAll("text")
+                .data(graph.nodes)
+                .enter().append("text")
+                .attr("class", "node-text")
+                .attr("dy", -15)
+                .text(d => d.name);
+            
+            // Add PageRank labels
+            const pagerankText = svg.append("g")
+                .selectAll("text")
+                .data(graph.nodes)
+                .enter().append("text")
+                .attr("class", "pagerank-text")
+                .attr("dy", 20)
+                .text(d => `PR: ${computePageRank(d.id).toFixed(4)}`);
+            
+            // Add coupon count labels
+            const couponText = svg.append("g")
+                .selectAll("text")
+                .data(graph.nodes)
+                .enter().append("text")
+                .attr("class", "pagerank-text")
+                .attr("dy", 35)
+                .text(d => `Coupons: ${couponCount[d.id]}`);
+            
+            // Update positions on simulation tick
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+                
+                node
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+                
+                nodeText
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
+                
+                pagerankText
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
+                
+                couponText
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
+            });
+        }
+        
+        // Compute PageRank for a node
+        function computePageRank(nodeId) {
+            const n = graph.nodes.length;
+            return (zeta[nodeId] * epsilon) / (n * K);
+        }
+        
+        // Perform one round of the distributed algorithm
+        function stepRound() {
+            if (totalRounds >= numRounds) {
+                document.getElementById('action-type').textContent = "Simulation complete";
+                if (isRunning) toggleRun();
+                return;
+            }
+            
+            totalRounds++;
+            document.getElementById('action-type').textContent = `Processing round ${totalRounds}/${numRounds}`;
+            
+            // Create a copy of coupon counts to work with
+            const currentCoupons = [...couponCount];
+            
+            // Initialize transfers
+            const transfers = {};
+            
+            // Process each node with active coupons
+            for (let v = 0; v < graph.nodes.length; v++) {
+                if (currentCoupons[v] > 0) {
+                    const outgoingLinks = graph.links.filter(link => link.source.id === v);
+                    
+                    if (outgoingLinks.length > 0) {
+                        // Calculate how many coupons will be transferred to each neighbor
+                        const p = (1 - epsilon) / outgoingLinks.length;
+                        
+                        outgoingLinks.forEach(link => {
+                            const u = link.target.id;
+                            const key = `${v}-${u}`;
+                            
+                            // Binomial distribution for number of coupons moving from v to u
+                            transfers[key] = binomial(currentCoupons[v], p);
+                        });
+                        
+                        // The rest (epsilon * currentCoupons[v]) terminate
+                    } else {
+                        // Node has no outgoing edges, all coupons terminate
+                    }
+                    
+                    // Reset coupon count for this node (will be updated by incoming transfers)
+                    couponCount[v] = 0;
+                }
+            }
+            
+            // Process transfers and update coupon counts
+            let roundMessages = 0;
+            
+            for (const [key, count] of Object.entries(transfers)) {
+                if (count > 0) {
+                    const [v, u] = key.split('-').map(Number);
+                    
+                    // Animate the transfer
+                    animateTransfer(v, u, count);
+                    
+                    // Update statistics
+                    roundMessages += count;
+                    totalMessages += count;
+                    
+                    // Update target node's coupon count (will be processed after all transfers)
+                    couponCount[u] = (couponCount[u] || 0) + count;
+                }
+            }
+            
+            // Update zeta counts (including the coupons that stayed)
+            for (let v = 0; v < graph.nodes.length; v++) {
+                zeta[v] += couponCount[v]; // Add the new coupons as visits
+            }
+            
+            // Update the visualization after a delay to allow animations to complete
+            setTimeout(() => {
+                updateVisualization();
+                updateStats();
+            }, animationSpeed);
+        }
+        
+        // Animate the transfer of coupons between nodes
+        function animateTransfer(sourceId, targetId, count) {
+            const sourceNode = graph.nodes[sourceId];
+            const targetNode = graph.nodes[targetId];
+            
+            // Create a line for the transfer animation
+            const line = svg.append("line")
+                .attr("class", "walk-line")
+                .attr("x1", sourceNode.x)
+                .attr("y1", sourceNode.y)
+                .attr("x2", sourceNode.x)
+                .attr("y2", sourceNode.y);
+            
+            // Animate the line
+            line.transition()
+                .duration(animationSpeed)
+                .attr("x2", targetNode.x)
+                .attr("y2", targetNode.y)
+                .remove();
+            
+            // Create a text label for the count
+            const label = svg.append("text")
+                .attr("class", "pagerank-text")
+                .attr("x", (sourceNode.x + targetNode.x) / 2)
+                .attr("y", (sourceNode.y + targetNode.y) / 2)
+                .attr("dy", -5)
+                .attr("text-anchor", "middle")
+                .text(count > 1 ? count : "");
+            
+            // Animate the label
+            label.transition()
+                .duration(animationSpeed)
+                .style("opacity", 0)
+                .remove();
+        }
+        
+        // Update the visualization
+        function updateVisualization() {
+            const maxVisits = Math.max(...zeta);
+            const maxRadius = 30;
+            const minRadius = 10;
+            
+            svg.selectAll(".node")
+                .data(graph.nodes)
+                .attr("fill", d => getColor(computePageRank(d.id)))
+                .attr("r", d => getNodeRadius(zeta[d.id]));
+            
+            // Update PageRank text
+            svg.selectAll(".pagerank-text")
+                .data(graph.nodes)
+                .filter((d, i) => i % 3 === 0) // Only update every third one (PR text)
+                .text(d => `PR: ${computePageRank(d.id).toFixed(4)}`);
+            
+            // Update coupon count text
+            svg.selectAll(".pagerank-text")
+                .data(graph.nodes)
+                .filter((d, i) => i % 3 === 2) // Only update every third one (coupon text)
+                .text(d => `Coupons: ${couponCount[d.id]}`);
+        }
+        
+        // Get node radius based on visit count
+        function getNodeRadius(visits) {
+            const maxVisits = Math.max(...zeta);
+            const minRadius = 10;
+            const maxRadius = 30;
+            
+            if (maxVisits === 0) return minRadius;
+            return minRadius + (maxRadius - minRadius) * (visits / maxVisits);
+        }
+        
+        // Update the statistics display
+        function updateStats() {
+            document.getElementById('round-count').textContent = `${totalRounds}/${numRounds}`;
+            document.getElementById('total-messages').textContent = totalMessages;
+        }
+        
+        // Toggle the run/pause state
+        function toggleRun() {
+            const runBtn = document.getElementById('run-btn');
+            
+            if (isRunning) {
+                clearInterval(runInterval);
+                runBtn.textContent = "Run Simulation";
+                runBtn.classList.remove("bg-yellow-500", "hover:bg-yellow-600");
+                runBtn.classList.add("bg-green-500", "hover:bg-green-600");
+            } else {
+                runInterval = setInterval(stepRound, 1000 - animationSpeed);
+                runBtn.textContent = "Pause";
+                runBtn.classList.remove("bg-green-500", "hover:bg-green-600");
+                runBtn.classList.add("bg-yellow-500", "hover:bg-yellow-600");
+            }
+            
+            isRunning = !isRunning;
+        }
+        
+        // Reset the simulation
+        function resetSimulation() {
+            if (isRunning) {
+                toggleRun();
+            }
+            generateGraph();
+        }
+        
+        // Show node information panel
+        function showNodeInfo(event, d) {
+            const nodeId = d.id;
+            const node = graph.nodes[nodeId];
+            
+            // Get outgoing connections
+            const outgoingLinks = graph.links.filter(link => link.source.id === nodeId);
+            const connections = outgoingLinks.map(link => `Node ${link.target.id}`).join(", ") || "None";
+            
+            // Update info panel
+            document.getElementById('detail-id').textContent = `Node ${nodeId}`;
+            document.getElementById('detail-degree').textContent = outgoingLinks.length;
+            document.getElementById('detail-coupons').textContent = couponCount[nodeId];
+            document.getElementById('detail-visits').textContent = zeta[nodeId];
+            document.getElementById('detail-pagerank').textContent = computePageRank(nodeId).toFixed(4);
+            
+            const connectionsElement = document.getElementById('detail-connections');
+            connectionsElement.innerHTML = '';
+            outgoingLinks.forEach(link => {
+                const div = document.createElement('div');
+                div.className = 'py-1';
+                div.textContent = `→ Node ${link.target.id}`;
+                connectionsElement.appendChild(div);
+            });
+            
+            if (outgoingLinks.length === 0) {
+                const div = document.createElement('div');
+                div.className = 'py-1 text-gray-500';
+                div.textContent = 'No outgoing connections';
+                connectionsElement.appendChild(div);
+            }
+            
+            // Show panel
+            document.getElementById('info-panel').classList.remove('hidden');
+        }
+        
+        // Close the info panel
+        function closeInfoPanel() {
+            document.getElementById('info-panel').classList.add('hidden');
+        }
+        
+        // Get color based on PageRank value
+        function getColor(value) {
+            // Use a color scale from blue (low) to red (high)
+            const maxPR = Math.max(...graph.nodes.map((_, i) => computePageRank(i)));
+            const normalizedValue = maxPR > 0 ? value / maxPR : 0;
+            const hue = (1 - normalizedValue) * 240; // 240 is blue, 0 is red
+            return `hsl(${hue}, 80%, 60%)`;
+        }
+        
+        // Binomial distribution approximation
+        function binomial(n, p) {
+            if (n <= 0 || p <= 0) return 0;
+            if (p >= 1) return n;
+            
+            let count = 0;
+            for (let i = 0; i < n; i++) {
+                if (Math.random() < p) count++;
+            }
+            return count;
+        }
+        
+        // Drag functions for node interaction
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+        
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+        
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+        
+        // Initialize the application when the page loads
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
