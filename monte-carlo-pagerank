@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PageRank Visualization with Random Walk</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        .node {
+            stroke: #fff;
+            stroke-width: 1.5px;
+            transition: r 0.3s ease;
+        }
+        
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+            stroke-width: 1.5px;
+        }
+        
+        .arrow {
+            fill: #999;
+            stroke-opacity: 0.6;
+        }
+        
+        .node-text {
+            font-size: 10px;
+            font-weight: bold;
+            pointer-events: none;
+        }
+        
+        .pagerank-text {
+            font-size: 8px;
+            pointer-events: none;
+        }
+        
+        .token {
+            fill: #ff5722;
+            stroke: #fff;
+            stroke-width: 1px;
+            transition: all 0.3s ease;
+        }
+        
+        .current-node {
+            filter: url(#glow);
+        }
+        
+        .info-panel {
+            transition: all 0.3s ease;
+        }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+        
+        .control-panel {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen p-4">
+    <div class="container mx-auto">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">PageRank Visualization with Random Walk</h1>
+        
+        <div class="flex flex-col lg:flex-row gap-6">
+            <!-- Graph Visualization Area -->
+            <div class="flex-1 bg-white rounded-lg shadow-lg p-4">
+                <div id="graph-container" class="w-full h-full min-h-[500px]"></div>
+            </div>
+            
+            <!-- Control Panel -->
+            <div class="w-full lg:w-80 control-panel bg-white rounded-lg p-4">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Controls</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Number of Nodes</label>
+                        <input type="number" id="node-count" min="5" max="50" value="20" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Edge Probability</label>
+                        <input type="range" id="edge-prob" min="0.01" max="0.5" step="0.01" value="0.1" 
+                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <span id="edge-prob-value" class="text-xs text-gray-600">0.1</span>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Damping Factor</label>
+                        <input type="range" id="damping-factor" min="0.1" max="0.99" step="0.01" value="0.85" 
+                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <span id="damping-factor-value" class="text-xs text-gray-600">0.85</span>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Animation Speed</label>
+                        <input type="range" id="animation-speed" min="10" max="500" step="10" value="100" 
+                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <span id="speed-value" class="text-xs text-gray-600">Medium</span>
+                    </div>
+                    
+                    <div class="flex space-x-2">
+                        <button id="step-btn" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md transition">
+                            Step
+                        </button>
+                        <button id="run-btn" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-md transition">
+                            Run
+                        </button>
+                        <button id="reset-btn" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-md transition">
+                            Reset
+                        </button>
+                    </div>
+                    
+                    <div class="pt-4 border-t border-gray-200">
+                        <h3 class="text-sm font-medium text-gray-700 mb-2">Simulation Stats</h3>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div class="text-gray-600">Steps:</div>
+                            <div id="step-count" class="font-medium">0</div>
+                            
+                            <div class="text-gray-600">Current Node:</div>
+                            <div id="current-node" class="font-medium">-</div>
+                            
+                            <div class="text-gray-600">Action:</div>
+                            <div id="action-type" class="font-medium">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Node Information Panel -->
+            <div id="info-panel" class="w-full lg:w-80 info-panel bg-white rounded-lg p-4 hidden">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xl font-semibold text-gray-700">Node Details</h2>
+                    <button id="close-panel" class="text-gray-500 hover:text-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="space-y-3 text-sm">
+                    <div class="grid grid-cols-2">
+                        <div class="text-gray-600">Node ID:</div>
+                        <div id="detail-id" class="font-medium">-</div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2">
+                        <div class="text-gray-600">Out Degree:</div>
+                        <div id="detail-degree" class="font-medium">-</div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2">
+                        <div class="text-gray-600">Visits:</div>
+                        <div id="detail-visits" class="font-medium">-</div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2">
+                        <div class="text-gray-600">PageRank:</div>
+                        <div id="detail-pagerank" class="font-medium">-</div>
+                    </div>
+                    
+                    <div>
+                        <div class="text-gray-600 mb-1">Connected To:</div>
+                        <div id="detail-connections" class="text-xs bg-gray-100 p-2 rounded max-h-32 overflow-y-auto"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Main variables
+        let graph = {
+            nodes: [],
+            links: []
+        };
+        let simulation;
+        let svg;
+        let token;
+        let currentPosition = 0;
+        let visitCounts = [];
+        let totalSteps = 0;
+        let isRunning = false;
+        let runInterval;
+        let animationSpeed = 100;
+        
+        // Initialize the application
+        function init() {
+            // Set up event listeners for controls
+            document.getElementById('step-btn').addEventListener('click', stepSimulation);
+            document.getElementById('run-btn').addEventListener('click', toggleRun);
+            document.getElementById('reset-btn').addEventListener('click', resetSimulation);
+            document.getElementById('close-panel').addEventListener('click', closeInfoPanel);
+            
+            document.getElementById('edge-prob').addEventListener('input', function() {
+                const value = parseFloat(this.value).toFixed(2);
+                document.getElementById('edge-prob-value').textContent = value;
+            });
+            
+            document.getElementById('damping-factor').addEventListener('input', function() {
+                const value = parseFloat(this.value).toFixed(2);
+                document.getElementById('damping-factor-value').textContent = value;
+            });
+            
+            document.getElementById('animation-speed').addEventListener('input', function() {
+                animationSpeed = parseInt(this.value);
+                const speedText = animationSpeed < 50 ? 'Fast' : 
+                                 animationSpeed < 150 ? 'Medium' : 'Slow';
+                document.getElementById('speed-value').textContent = speedText;
+                
+                if (isRunning) {
+                    clearInterval(runInterval);
+                    runInterval = setInterval(stepSimulation, 1000 - animationSpeed);
+                }
+            });
+            
+            // Create SVG container
+            svg = d3.select("#graph-container")
+                .append("svg")
+                .attr("width", "100%")
+                .attr("height", "100%")
+                .attr("viewBox", "0 0 800 600")
+                .attr("preserveAspectRatio", "xMidYMid meet");
+            
+            // Add filter for glow effect
+            const defs = svg.append("defs");
+            const filter = defs.append("filter")
+                .attr("id", "glow")
+                .attr("width", "130%")
+                .attr("height", "130%")
+                .attr("x", "-15%")
+                .attr("y", "-15%");
+            
+            filter.append("feGaussianBlur")
+                .attr("stdDeviation", "3.5")
+                .attr("result", "blur");
+            
+            filter.append("feComposite")
+                .attr("in", "SourceGraphic")
+                .attr("in2", "blur")
+                .attr("operator", "over");
+            
+            // Generate initial graph
+            generateGraph();
+        }
+        
+        // Generate a random directed graph
+        function generateGraph() {
+            const nodeCount = parseInt(document.getElementById('node-count').value);
+            const edgeProb = parseFloat(document.getElementById('edge-prob').value);
+            
+            // Create nodes
+            graph.nodes = Array.from({length: nodeCount}, (_, i) => ({
+                id: i,
+                name: `Node ${i}`,
+                x: Math.random() * 700 + 50,
+                y: Math.random() * 500 + 50
+            }));
+            
+            // Create links with probability edgeProb
+            graph.links = [];
+            for (let i = 0; i < nodeCount; i++) {
+                for (let j = 0; j < nodeCount; j++) {
+                    if (i !== j && Math.random() < edgeProb) {
+                        graph.links.push({
+                            source: i,
+                            target: j
+                        });
+                    }
+                }
+            }
+            
+            // Reset simulation state
+            currentPosition = Math.floor(Math.random() * nodeCount);
+            visitCounts = Array(nodeCount).fill(0);
+            totalSteps = 0;
+            updateStats();
+            
+            // Render the graph
+            renderGraph();
+        }
+        
+        // Render the graph using D3 force layout
+        function renderGraph() {
+            // Clear existing elements
+            svg.selectAll("*").remove();
+            
+            // Add the arrow marker definition
+            svg.append("defs").append("marker")
+                .attr("id", "arrowhead")
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 15)
+                .attr("refY", 0)
+                .attr("orient", "auto")
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("xoverflow", "visible")
+                .append("svg:path")
+                .attr("d", "M 0,-5 L 10,0 L 0,5")
+                .attr("class", "arrow");
+            
+            // Re-add the glow filter (it was removed when we cleared the SVG)
+            const defs = svg.append("defs");
+            const filter = defs.append("filter")
+                .attr("id", "glow")
+                .attr("width", "130%")
+                .attr("height", "130%")
+                .attr("x", "-15%")
+                .attr("y", "-15%");
+            
+            filter.append("feGaussianBlur")
+                .attr("stdDeviation", "3.5")
+                .attr("result", "blur");
+            
+            filter.append("feComposite")
+                .attr("in", "SourceGraphic")
+                .attr("in2", "blur")
+                .attr("operator", "over");
+            
+            // Create force simulation
+            simulation = d3.forceSimulation(graph.nodes)
+                .force("link", d3.forceLink(graph.links).id(d => d.id).distance(100))
+                .force("charge", d3.forceManyBody().strength(-300))
+                .force("center", d3.forceCenter(400, 300))
+                .force("collision", d3.forceCollide().radius(30));
+            
+            // Create links
+            const link = svg.append("g")
+                .selectAll("line")
+                .data(graph.links)
+                .enter().append("line")
+                .attr("class", "link")
+                .attr("marker-end", "url(#arrowhead)");
+            
+            // Create nodes
+            const node = svg.append("g")
+                .selectAll("circle")
+                .data(graph.nodes)
+                .enter().append("circle")
+                .attr("class", "node")
+                .attr("r", 10)
+                .attr("fill", d => getColor(0))
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended))
+                .on("click", showNodeInfo);
+            
+            // Add node labels
+            const nodeText = svg.append("g")
+                .selectAll("text")
+                .data(graph.nodes)
+                .enter().append("text")
+                .attr("class", "node-text")
+                .attr("dy", -15)
+                .text(d => d.name);
+            
+            // Add PageRank labels
+            const pagerankText = svg.append("g")
+                .selectAll("text")
+                .data(graph.nodes)
+                .enter().append("text")
+                .attr("class", "pagerank-text")
+                .attr("dy", 20)
+                .text(d => "PR: 0.00");
+            
+            // Create token (walker)
+            token = svg.append("circle")
+                .attr("class", "token")
+                .attr("r", 8)
+                .attr("cx", graph.nodes[currentPosition].x)
+                .attr("cy", graph.nodes[currentPosition].y);
+            
+            // Highlight current node
+            node.filter((d, i) => i === currentPosition)
+                .classed("current-node", true);
+            
+            // Update positions on simulation tick
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+                
+                node
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+                
+                nodeText
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
+                
+                pagerankText
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
+                
+                token
+                    .attr("cx", graph.nodes[currentPosition].x)
+                    .attr("cy", graph.nodes[currentPosition].y);
+            });
+        }
+        
+        // Perform one step of the random walk
+        function stepSimulation() {
+            const dampingFactor = parseFloat(document.getElementById('damping-factor').value);
+            const randomValue = Math.random();
+            let actionType = "";
+            
+            // With probability (1 - dampingFactor), jump to a random node
+            if (randomValue > dampingFactor) {
+                const newNode = Math.floor(Math.random() * graph.nodes.length);
+                actionType = `Jump to Node ${newNode}`;
+                
+                // Fade out and in for jump effect
+                token.transition()
+                    .duration(animationSpeed / 2)
+                    .attr("opacity", 0)
+                    .on("end", () => {
+                        currentPosition = newNode;
+                        token.transition()
+                            .duration(animationSpeed / 2)
+                            .attr("opacity", 1);
+                    });
+            } 
+            // Otherwise, follow a random outgoing edge
+            else {
+                const outgoingLinks = graph.links.filter(link => link.source.id === currentPosition);
+                
+                if (outgoingLinks.length > 0) {
+                    const randomLink = outgoingLinks[Math.floor(Math.random() * outgoingLinks.length)];
+                    const targetNode = randomLink.target.id;
+                    actionType = `Follow edge to Node ${targetNode}`;
+                    
+                    // Animate along the edge
+                    const sourceNode = graph.nodes[currentPosition];
+                    const targetNodePos = graph.nodes[targetNode];
+                    
+                    token.transition()
+                        .duration(animationSpeed)
+                        .attrTween("cx", () => t => sourceNode.x + (targetNodePos.x - sourceNode.x) * t)
+                        .attrTween("cy", () => t => sourceNode.y + (targetNodePos.y - sourceNode.y) * t)
+                        .on("end", () => {
+                            currentPosition = targetNode;
+                        });
+                } else {
+                    // No outgoing edges, jump to random node
+                    const newNode = Math.floor(Math.random() * graph.nodes.length);
+                    actionType = `No outgoing edges - Jump to Node ${newNode}`;
+                    
+                    token.transition()
+                        .duration(animationSpeed / 2)
+                        .attr("opacity", 0)
+                        .on("end", () => {
+                            currentPosition = newNode;
+                            token.transition()
+                                .duration(animationSpeed / 2)
+                                .attr("opacity", 1);
+                        });
+                }
+            }
+            
+            // Update visit counts and total steps
+            visitCounts[currentPosition]++;
+            totalSteps++;
+            
+            // Update the visualization
+            updateVisualization(actionType);
+        }
+        
+        // Update the visualization after each step
+        function updateVisualization(actionType) {
+            // Update stats display
+            updateStats();
+            document.getElementById('action-type').textContent = actionType;
+            
+            // Update node colors and sizes based on PageRank
+            const maxVisits = Math.max(...visitCounts);
+            const minRadius = 10;
+            const maxRadius = 30;
+            
+            svg.selectAll(".node")
+                .data(graph.nodes)
+                .attr("fill", (d, i) => getColor(visitCounts[i] / Math.max(1, totalSteps)))
+                .attr("r", (d, i) => {
+                    const pagerank = visitCounts[i] / Math.max(1, totalSteps);
+                    return minRadius + (maxRadius - minRadius) * (visitCounts[i] / Math.max(1, maxVisits));
+                })
+                .classed("current-node", (d, i) => i === currentPosition);
+            
+            // Update PageRank text
+            svg.selectAll(".pagerank-text")
+                .data(graph.nodes)
+                .text((d, i) => `PR: ${(visitCounts[i] / Math.max(1, totalSteps)).toFixed(4)}`);
+        }
+        
+        // Update the statistics display
+        function updateStats() {
+            document.getElementById('step-count').textContent = totalSteps;
+            document.getElementById('current-node').textContent = `Node ${currentPosition}`;
+        }
+        
+        // Toggle the run/pause state
+        function toggleRun() {
+            const runBtn = document.getElementById('run-btn');
+            
+            if (isRunning) {
+                clearInterval(runInterval);
+                runBtn.textContent = "Run";
+                runBtn.classList.remove("bg-yellow-500", "hover:bg-yellow-600");
+                runBtn.classList.add("bg-green-500", "hover:bg-green-600");
+            } else {
+                runInterval = setInterval(stepSimulation, 1000 - animationSpeed);
+                runBtn.textContent = "Pause";
+                runBtn.classList.remove("bg-green-500", "hover:bg-green-600");
+                runBtn.classList.add("bg-yellow-500", "hover:bg-yellow-600");
+            }
+            
+            isRunning = !isRunning;
+        }
+        
+        // Reset the simulation
+        function resetSimulation() {
+            if (isRunning) {
+                toggleRun();
+            }
+            generateGraph();
+        }
+        
+        // Show node information panel
+        function showNodeInfo(event, d) {
+            const nodeId = d.id;
+            const node = graph.nodes[nodeId];
+            
+            // Get outgoing connections
+            const outgoingLinks = graph.links.filter(link => link.source.id === nodeId);
+            const connections = outgoingLinks.map(link => `Node ${link.target.id}`).join(", ") || "None";
+            
+            // Update info panel
+            document.getElementById('detail-id').textContent = `Node ${nodeId}`;
+            document.getElementById('detail-degree').textContent = outgoingLinks.length;
+            document.getElementById('detail-visits').textContent = visitCounts[nodeId];
+            document.getElementById('detail-pagerank').textContent = (visitCounts[nodeId] / Math.max(1, totalSteps)).toFixed(4);
+            
+            const connectionsElement = document.getElementById('detail-connections');
+            connectionsElement.innerHTML = '';
+            outgoingLinks.forEach(link => {
+                const div = document.createElement('div');
+                div.className = 'py-1';
+                div.textContent = `→ Node ${link.target.id}`;
+                connectionsElement.appendChild(div);
+            });
+            
+            if (outgoingLinks.length === 0) {
+                const div = document.createElement('div');
+                div.className = 'py-1 text-gray-500';
+                div.textContent = 'No outgoing connections';
+                connectionsElement.appendChild(div);
+            }
+            
+            // Show panel
+            document.getElementById('info-panel').classList.remove('hidden');
+        }
+        
+        // Close the info panel
+        function closeInfoPanel() {
+            document.getElementById('info-panel').classList.add('hidden');
+        }
+        
+        // Get color based on PageRank value
+        function getColor(value) {
+            // Use a color scale from blue (low) to red (high)
+            const hue = (1 - value) * 240; // 240 is blue, 0 is red
+            return `hsl(${hue}, 80%, 60%)`;
+        }
+        
+        // Drag functions for node interaction
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+        
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+        
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+        
+        // Initialize the application when the page loads
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
