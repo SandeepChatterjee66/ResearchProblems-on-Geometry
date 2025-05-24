@@ -1,10 +1,8 @@
 # computational algorithms of geometry research
 https://sandeepchatterjee66.github.io/ResearchProblems-on-Geometry/
 
+### 📄 Index Table
 #### interesting open research problems I am tring to solve
-### 📄 HTML File Index
-
-
 - [monte-carlo-pagerank.html](https://sandeepchatterjee66.github.io/ResearchProblems-on-Geometry/monte-carlo-pagerank.html)
 - [monte-carlo-pagerank2.html](https://sandeepchatterjee66.github.io/ResearchProblems-on-Geometry/monte-carlo-pagerank2.html)
 - [monte-carlo-pagerank3(1).html](https://sandeepchatterjee66.github.io/ResearchProblems-on-Geometry/monte-carlo-pagerank3(1).html)
